@@ -80,9 +80,13 @@ def evaluate(opt):
 
         encoder_dict = torch.load(encoder_path)
 
-        dataset = datasets.KITTIRAWDataset(opt.data_path, filenames,
+        if opt.png:
+            image_ext = '.png'
+        else:
+            image_ext = '.jpg'
+        dataset = datasets.KITTIRAWDataset(os.path.dirname(os.path.abspath(__file__))+"/../../data/kitti_raw", filenames,
                                            encoder_dict['height'], encoder_dict['width'],
-                                           [0], 4, is_train=False)
+                                           [0], 4, is_train=False, img_ext=image_ext)
         dataloader = DataLoader(dataset, 16, shuffle=False, num_workers=opt.num_workers,
                                 pin_memory=True, drop_last=False)
 
