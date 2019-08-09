@@ -77,22 +77,21 @@ def generate_depth_map(calib_dir, velo_filename, cam=2, vel_depth=False):
     # use minus 1 to get the exact same value as KITTI matlab code
     velo_pts_im[:, 0] = np.round(velo_pts_im[:, 0]) - 1
     velo_pts_im[:, 1] = np.round(velo_pts_im[:, 1]) - 1
-    val_inds = (velo_pts_im[:, 0] >= 0) & (velo_pts_im[:, 1] >= 0)
-    val_inds = val_inds & (velo_pts_im[:, 0] < im_shape[1]) & (velo_pts_im[:, 1] < im_shape[0])
+    val_inds = (velo_pts_im[:, 0] >= 0) \
+        & (velo_pts_im[:, 1] >= 0)\
+        & (velo_pts_im[:, 0] < im_shape[1]) \
+        & (velo_pts_im[:, 1] < im_shape[0]) \
+        & (velo_pts_im[:, 2] > 0)  # positive depth
     velo_pts_im = velo_pts_im[val_inds, :]
 
     # project to image
-    depth = np.zeros((im_shape[:2]))
-    depth[velo_pts_im[:, 1].astype(np.int), velo_pts_im[:, 0].astype(np.int)] = velo_pts_im[:, 2]
+    sparse_depth_map = np.zeros((im_shape[:2]), np.float16)
+    for i in range(velo_pts_im.shape[0]):
+        px = int(velo_pts_im[i, 0])
+        py = int(velo_pts_im[i, 1])
+        depth = velo_pts_im[i, 2]
+        if sparse_depth_map[py, px] == 0 or sparse_depth_map[py, px] > depth:
+            # for conflicts, use closer point
+            sparse_depth_map[py, px] = depth
 
-    # find the duplicate points and choose the closest depth
-    inds = sub2ind(depth.shape, velo_pts_im[:, 1], velo_pts_im[:, 0])
-    dupe_inds = [item for item, count in Counter(inds).items() if count > 1]
-    for dd in dupe_inds:
-        pts = np.where(inds == dd)[0]
-        x_loc = int(velo_pts_im[pts[0], 0])
-        y_loc = int(velo_pts_im[pts[0], 1])
-        depth[y_loc, x_loc] = velo_pts_im[pts, 2].min()
-    depth[depth < 0] = 0
-
-    return depth
+    return sparse_depth_map
