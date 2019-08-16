@@ -67,18 +67,18 @@ def evaluate(opt):
 
     if opt.ext_disp_to_eval is None:
 
-        opt.load_weights_folder = os.path.expanduser(opt.load_weights_folder)
-
-        assert os.path.isdir(opt.load_weights_folder), \
-            "Cannot find a folder at {}".format(opt.load_weights_folder)
-
-        print("-> Loading weights from {}".format(opt.load_weights_folder))
+        # opt.load_weights_folder = os.path.expanduser(opt.load_weights_folder)
+        #
+        # assert os.path.isdir(opt.load_weights_folder), \
+        #     "Cannot find a folder at {}".format(opt.load_weights_folder)
+        #
+        # print("-> Loading weights from {}".format(opt.load_weights_folder))
 
         filenames = readlines(os.path.join(splits_dir, opt.eval_split, "test_files.txt"))
-        encoder_path = os.path.join(opt.load_weights_folder, "encoder.pth")
-        decoder_path = os.path.join(opt.load_weights_folder, "depth.pth")
+        # encoder_path = os.path.join(opt.load_weights_folder, "encoder.pth")
+        # decoder_path = os.path.join(opt.load_weights_folder, "depth.pth")
 
-        encoder_dict = torch.load(encoder_path)
+        # encoder_dict = torch.load(encoder_path)
 
         if opt.png:
             image_ext = '.png'
@@ -90,26 +90,105 @@ def evaluate(opt):
         dataloader = DataLoader(dataset, 16, shuffle=False, num_workers=opt.num_workers,
                                 pin_memory=True, drop_last=False)
 
-        encoder = networks.ResnetEncoder(opt.num_layers, False)
-        depth_decoder = networks.DepthDecoder(encoder.num_ch_enc)
-
-        model_dict = encoder.state_dict()
-        encoder.load_state_dict({k: v for k, v in encoder_dict.items() if k in model_dict})
-        depth_decoder.load_state_dict(torch.load(decoder_path))
-
-        encoder.cuda()
-        encoder.eval()
-        depth_decoder.cuda()
-        depth_decoder.eval()
+        # encoder = networks.ResnetEncoder(opt.num_layers, False)
+        # depth_decoder = networks.DepthDecoder(encoder.num_ch_enc)
+        #
+        # model_dict = encoder.state_dict()
+        # encoder.load_state_dict({k: v for k, v in encoder_dict.items() if k in model_dict})
+        # depth_decoder.load_state_dict(torch.load(decoder_path))
+        #
+        # encoder.cuda()
+        # encoder.eval()
+        # depth_decoder.cuda()
+        # depth_decoder.eval()
 
         pred_disps = []
 
-        print("-> Computing predictions with size {}x{}".format(
-            encoder_dict['width'], encoder_dict['height']))
+        # print("-> Computing predictions with size {}x{}".format(
+        #     encoder_dict['width'], encoder_dict['height']))
+
+        import sys
+        sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../nconv'))
+        from run_nconv_cnn import load_net
+        depth_net = load_net('exp_guided_nconv_cnn_l1', mode='bla', checkpoint_num=40, set_='bla')
+        # depth_net = load_net('exp_unguided_depth', mode='bla', checkpoint_num=3, set_='bla')
 
         with torch.no_grad():
             for data in dataloader:
-                input_color = data[("color", 0, 0)].cuda()
+                img = torch.squeeze(data[("color", 0, 0)][1, :, :, :]).numpy()
+                lidarmap = np.ndarray.astype(torch.squeeze(data["depth_gt"][1, :, :]).numpy(), np.uint8)
+                print(np.size(img))
+                print(np.size(lidarmap))
+                img = np.ndarray.astype(np.transpose(img, (1, 2, 0))*255, np.uint8)
+
+                from PIL import Image
+                from torchvision import transforms
+                transform = transforms.Compose([transforms.CenterCrop((352, 1216))])
+                img = np.array(transform(Image.fromarray(img)))
+                lidarmap = np.array(transform(Image.fromarray(lidarmap)))
+
+                print(np.shape(img))
+
+                from PIL import Image
+                import matplotlib as plt
+
+                q1_lidar = np.quantile(lidarmap[lidarmap > 0], 0.05)
+                q2_lidar = np.quantile(lidarmap[lidarmap > 0], 0.95)
+                print('lidar quantiles: %5.2f  -  %5.2f' % (q1_lidar, q2_lidar))
+                cmap = plt.cm.get_cmap('nipy_spectral', 256)
+                cmap = np.ndarray.astype(np.array([cmap(i) for i in range(256)])[:, :3] * 255, np.uint8)
+                depth_img = cmap[
+                            np.ndarray.astype(np.interp(lidarmap, (q1_lidar, q2_lidar), (0, 255)), np.int_),
+                            :]  # depths
+                fig = Image.fromarray(depth_img)
+                fig.save('lidar_img', 'png')
+                fig.show('lidar_img')
+
+                print(np.mean(img))
+                fig = Image.fromarray(np.ndarray.astype(img, np.uint8))
+                fig.save('img', 'png')
+                fig.show('img')
+
+                dense_depths, confidences = depth_net.return_one_prediction(lidarmap*256, img)
+
+                import matplotlib as plt
+                from PIL import Image
+
+                # inputs_d2 = np.squeeze(inputs_d.cpu().data.numpy
+                q1_lidar = np.quantile(lidarmap[lidarmap > 0], 0.05)
+                q2_lidar = np.quantile(lidarmap[lidarmap > 0], 0.95)
+                print('lidar quantiles: %5.2f  -  %5.2f' % (q1_lidar, q2_lidar))
+                cmap = plt.cm.get_cmap('nipy_spectral', 256)
+                cmap = np.ndarray.astype(np.array([cmap(i) for i in range(256)])[:, :3] * 255, np.uint8)
+                depth_img = cmap[
+                            np.ndarray.astype(np.interp(lidarmap, (q1_lidar, q2_lidar), (0, 255)), np.int_),
+                            :]  # depths
+                fig = Image.fromarray(depth_img)
+                fig.save('lidar_img', 'png')
+                fig.show('lidar_img')
+
+                print('predicted median: %5.2f' % (np.median(dense_depths)))
+                q1_lidar = np.quantile(dense_depths, 0.05)
+                q2_lidar = np.quantile(dense_depths, 0.95)
+                print('predicted quantiles: %5.2f  -  %5.2f' % (q1_lidar, q2_lidar))
+
+                fig = Image.fromarray(np.ndarray.astype(img, np.uint8))
+                fig.save('img', 'png')
+                fig.show('img')
+
+                print(np.shape(dense_depths))
+                depth_img = cmap[
+                            np.ndarray.astype(np.interp(dense_depths, (q1_lidar, q2_lidar), (0, 255)), np.int_),
+                            :]  # depths
+                fig = Image.fromarray(depth_img)
+                fig.save('depth_img', 'png')
+                fig.show('depth_img')
+
+                print('rescaled predicted median: %5.2f' % (np.median(dense_depths[dense_depths > 0])))
+                print('rescaled predicted quantiles: %5.2f  -  %5.2f' % (q1_lidar, q2_lidar))
+
+                import sys
+                input()
 
                 if opt.post_process:
                     # Post-processed results require each image to have two forward passes
