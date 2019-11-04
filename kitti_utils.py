@@ -85,7 +85,7 @@ def generate_depth_map(calib_dir, velo_filename, cam=2, vel_depth=False):
     velo_pts_im = velo_pts_im[val_inds, :]
 
     # project to image
-    sparse_depth_map = np.zeros((im_shape[:2]), np.float16)
+    sparse_depth_map = np.zeros((im_shape[:2]), np.float)
     for i in range(velo_pts_im.shape[0]):
         px = int(velo_pts_im[i, 0])
         py = int(velo_pts_im[i, 1])

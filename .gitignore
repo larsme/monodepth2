@@ -9,3 +9,4 @@ models
 \.idea/
 
 venv/
+/Log_own_dataset/

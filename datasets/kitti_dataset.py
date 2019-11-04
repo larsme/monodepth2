@@ -50,11 +50,11 @@ class KITTIDataset(MonoDataset):
         return color
 
 
-class KITTIRAWDataset(KITTIDataset):
+class KITTIRAWSupervisedDataset(KITTIDataset):
     """KITTI dataset which loads the original velodyne depth maps for ground truth
     """
     def __init__(self, *args, **kwargs):
-        super(KITTIRAWDataset, self).__init__(*args, **kwargs)
+        super(KITTIRAWSupervisedDataset, self).__init__(*args, **kwargs)
 
     def get_image_path(self, folder, frame_index, side):
         f_str = "{:010d}{}".format(frame_index, self.img_ext)
@@ -78,6 +78,21 @@ class KITTIRAWDataset(KITTIDataset):
             depth_gt = np.fliplr(depth_gt)
 
         return depth_gt
+
+class KITTIRAWUnsupervisedDataset(KITTIDataset):
+    """KITTI dataset which loads the original velodyne depth maps for ground truth
+    """
+    def __init__(self, *args, **kwargs):
+        super(KITTIRAWUnsupervisedDataset, self).__init__(*args, **kwargs)
+
+    def get_image_path(self, folder, frame_index, side):
+        f_str = "{:010d}{}".format(frame_index, self.img_ext)
+        image_path = os.path.join(
+            self.data_path, folder, "image_0{}/data".format(self.side_map[side]), f_str)
+        return image_path
+
+    def check_depth(self):
+        return False
 
 
 class KITTIOdomDataset(KITTIDataset):

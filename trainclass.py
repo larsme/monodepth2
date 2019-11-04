@@ -111,32 +111,61 @@ class TrainClass:
         print("Training is using:\n  ", self.device)
 
         # data
-        datasets_dict = {"kitti": datasets.KITTIRAWDataset,
-                         "kitti_odom": datasets.KITTIOdomDataset}
+        datasets_dict = {"kitti_supervised": datasets.KITTIRAWSupervisedDataset,
+                         "kitti_unsupervised": datasets.KITTIRAWUnsupervisedDataset,
+                         "kitti_odom": datasets.KITTIOdomDataset,
+                         "own_supervised": datasets.OwnSupervisedTrainDataset,
+                         "own_unsupervised": datasets.OwnUnsupervisedTrainDataset}
         self.dataset = datasets_dict[self.opt.dataset]
 
-        fpath = os.path.join(os.path.dirname(__file__), "splits", self.opt.split, "{}_files.txt")
+        if self.opt.dataset[:5] == 'kitti':
+            fpath = os.path.join(os.path.dirname(__file__), "splits", self.opt.split, "{}_files.txt")
 
-        train_filenames = readlines(fpath.format("train"))
-        val_filenames = readlines(fpath.format("val"))
-        img_ext = '.png' if self.opt.png else '.jpg'
+            train_filenames = readlines(fpath.format("train"))
+            val_filenames = readlines(fpath.format("val"))
+            img_ext = '.png' if self.opt.png else '.jpg'
 
-        num_train_samples = len(train_filenames)
-        self.num_total_steps = num_train_samples // self.opt.batch_size * self.opt.num_epochs
+            num_train_samples = len(train_filenames)
+            self.num_total_steps = num_train_samples // self.opt.batch_size * self.opt.num_epochs
 
-        train_dataset = self.dataset(
-            self.opt.data_path, train_filenames, self.opt.height, self.opt.width,
-            self.opt.frame_ids, 4, is_train=True, img_ext=img_ext)
-        self.train_loader = DataLoader(
-            train_dataset, self.opt.batch_size, True,
-            num_workers=self.opt.num_workers, pin_memory=True, drop_last=True)
-        val_dataset = self.dataset(
-            self.opt.data_path, val_filenames, self.opt.height, self.opt.width,
-            self.opt.frame_ids, 4, is_train=False, img_ext=img_ext)
-        self.val_loader = DataLoader(
-            val_dataset, self.opt.batch_size, True,
-            num_workers=self.opt.num_workers, pin_memory=True, drop_last=True)
-        self.val_iter = iter(self.val_loader)
+            train_dataset = self.dataset(
+                self.opt.data_path, train_filenames, self.opt.height, self.opt.width,
+                self.opt.frame_ids, 4, is_train=True, img_ext=img_ext)
+            self.train_loader = DataLoader(
+                train_dataset, self.opt.batch_size, True,
+                num_workers=self.opt.num_workers, pin_memory=True, drop_last=True)
+            if self.opt.dataset == "kitti_unsupervised":
+                val_dataset = datasets.KITTIRAWSupervisedDataset(
+                    self.opt.data_path, val_filenames, self.opt.height, self.opt.width,
+                    self.opt.frame_ids, 4, is_train=False, img_ext=img_ext)
+            else:
+                val_dataset = self.dataset(
+                    self.opt.data_path, val_filenames, self.opt.height, self.opt.width,
+                    self.opt.frame_ids, 4, is_train=False, img_ext=img_ext)
+            self.val_loader = DataLoader(
+                val_dataset, self.opt.batch_size, True,
+                num_workers=self.opt.num_workers, pin_memory=True, drop_last=True)
+            self.val_iter = iter(self.val_loader)
+        elif self.opt.dataset[:3] == 'own':
+            train_dataset = self.dataset(self.opt.train_to_val_ratio, self.opt.assign_only_true_matches,
+                                         self.opt.min_depth,
+                                         [], [], self.opt.height, self.opt.width, self.opt.frame_ids, 4,
+                                         is_train=True, img_ext='.png')
+            self.num_total_steps = train_dataset.__len__() // self.opt.batch_size * self.opt.num_epochs
+            self.use_pose_net = not train_dataset.check_depth()
+            self.train_loader = DataLoader(
+                train_dataset, self.opt.batch_size, True,
+                num_workers=self.opt.num_workers, pin_memory=True, drop_last=True)
+            val_dataset = datasets.OwnSupervisedEvalDataset(self.opt.train_to_val_ratio,
+                                                            self.opt.assign_only_true_matches,
+                                                            self.opt.min_depth,
+                                                            [], [], self.opt.height, self.opt.width,
+                                                            self.opt.frame_ids, 4,
+                                                            is_train=False, img_ext='.png')
+            self.val_loader = DataLoader(
+                val_dataset, self.opt.batch_size, True,
+                num_workers=self.opt.num_workers, pin_memory=True, drop_last=True)
+            self.val_iter = iter(self.val_loader)
 
         self.writers = {}
         for mode in ["train", "val"]:
@@ -161,7 +190,8 @@ class TrainClass:
         self.depth_metric_names = [
             "de/abs_rel", "de/sq_rel", "de/rms", "de/log_rms", "da/a1", "da/a2", "da/a3"]
 
-        print("Using split:\n  ", self.opt.split)
+        if not self.opt.dataset[:3] == 'own':
+            print("Using split:\n  ", self.opt.split)
         print("There are {:d} training items and {:d} validation items\n".format(
             len(train_dataset), len(val_dataset)))
 
@@ -251,11 +281,25 @@ class TrainClass:
         if self.opt.predictive_mask:
             outputs["predictive_mask"] = self.models["predictive_mask"](features)
 
-        if self.use_pose_net:
+        if self.use_pose_net and "depth_gt" not in inputs.keys():
             outputs.update(self.predict_poses(inputs, features))
 
+        stop = False
+        for l, v in outputs.items():
+            if torch.isnan(v).any():
+                s = ''
+                for var in l:
+                    s += str(var)
+                s += " is NaN for item "+str(inputs['index'].squeeze().numpy())
+                raise Warning(s)
+                stop = True
+        assert not stop
+
         self.generate_images_pred(inputs, outputs)
-        losses = self.compute_losses(inputs, outputs)
+        if "depth_gt" in inputs.keys():
+            losses = self.compute_supervised_loss(inputs, outputs)
+        else:
+            losses = self.compute_unsupervised_losses(inputs, outputs)
 
         return outputs, losses
 
@@ -355,40 +399,40 @@ class TrainClass:
 
             outputs[("depth", 0, scale)] = depth
 
-            for i, frame_id in enumerate(self.opt.frame_ids[1:]):
+            if not "depth_gt" in inputs.keys():
+                for i, frame_id in enumerate(self.opt.frame_ids[1:]):
+                    if frame_id == "s":
+                        T = inputs["stereo_T"]
+                    else:
+                        T = outputs[("cam_T_cam", 0, frame_id)]
 
-                if frame_id == "s":
-                    T = inputs["stereo_T"]
-                else:
-                    T = outputs[("cam_T_cam", 0, frame_id)]
+                    # from the authors of https://arxiv.org/abs/1712.00175
+                    if self.opt.pose_model_type == "posecnn":
 
-                # from the authors of https://arxiv.org/abs/1712.00175
-                if self.opt.pose_model_type == "posecnn":
+                        axisangle = outputs[("axisangle", 0, frame_id)]
+                        translation = outputs[("translation", 0, frame_id)]
 
-                    axisangle = outputs[("axisangle", 0, frame_id)]
-                    translation = outputs[("translation", 0, frame_id)]
+                        inv_depth = 1 / depth
+                        mean_inv_depth = inv_depth.mean(3, True).mean(2, True)
 
-                    inv_depth = 1 / depth
-                    mean_inv_depth = inv_depth.mean(3, True).mean(2, True)
+                        T = transformation_from_parameters(
+                            axisangle[:, 0], translation[:, 0] * mean_inv_depth[:, 0], frame_id < 0)
 
-                    T = transformation_from_parameters(
-                        axisangle[:, 0], translation[:, 0] * mean_inv_depth[:, 0], frame_id < 0)
+                    cam_points = self.backproject_depth[source_scale](
+                        depth, inputs[("inv_K", source_scale)])
+                    pix_coords = self.project_3d[source_scale](
+                        cam_points, inputs[("K", source_scale)], T)
 
-                cam_points = self.backproject_depth[source_scale](
-                    depth, inputs[("inv_K", source_scale)])
-                pix_coords = self.project_3d[source_scale](
-                    cam_points, inputs[("K", source_scale)], T)
+                    outputs[("sample", frame_id, scale)] = pix_coords
 
-                outputs[("sample", frame_id, scale)] = pix_coords
+                    outputs[("color", frame_id, scale)] = F.grid_sample(
+                        inputs[("color", frame_id, source_scale)],
+                        outputs[("sample", frame_id, scale)],
+                        padding_mode="border")
 
-                outputs[("color", frame_id, scale)] = F.grid_sample(
-                    inputs[("color", frame_id, source_scale)],
-                    outputs[("sample", frame_id, scale)],
-                    padding_mode="border")
-
-                if not self.opt.disable_automasking:
-                    outputs[("color_identity", frame_id, scale)] = \
-                        inputs[("color", frame_id, source_scale)]
+                    if not self.opt.disable_automasking:
+                        outputs[("color_identity", frame_id, scale)] = \
+                            inputs[("color", frame_id, source_scale)]
 
     def compute_reprojection_loss(self, pred, target):
         """Computes reprojection loss between a batch of predicted and target images
@@ -404,7 +448,7 @@ class TrainClass:
 
         return reprojection_loss
 
-    def compute_losses(self, inputs, outputs):
+    def compute_unsupervised_losses(self, inputs, outputs):
         """Compute the reprojection and smoothness losses for a minibatch
         """
         losses = {}
@@ -493,6 +537,18 @@ class TrainClass:
 
         total_loss /= self.num_scales
         losses["loss"] = total_loss
+
+        stop = False
+        for l, v in losses.items():
+            if torch.isnan(v).any():
+                s = ''
+                for var in l:
+                    s += str(var)
+                s += " is NaN for item "+str(inputs['index'].squeeze().numpy())
+                raise Warning(s)
+                stop = True
+        assert not stop
+
         return losses
 
     def compute_depth_losses(self, inputs, outputs, losses):
@@ -501,29 +557,88 @@ class TrainClass:
         This isn't particularly accurate as it averages over the entire batch,
         so is only used to give an indication of validation performance
         """
-        depth_pred = outputs[("depth", 0, 0)]
+        pred_disp, depth_pred = disp_to_depth(outputs[("disp", 0)], self.opt.min_depth, self.opt.max_depth)
         depth_pred = torch.clamp(F.interpolate(
-            depth_pred, [375, 1242], mode="bilinear", align_corners=False), 1e-3, 80)
+            depth_pred, inputs["depth_gt"].shape[2:], mode="bilinear", align_corners=False),
+            self.opt.min_depth, self.opt.max_depth)
         depth_pred = depth_pred.detach()
 
         depth_gt = inputs["depth_gt"]
         mask = depth_gt > 0
 
         # garg/eigen crop
-        crop_mask = torch.zeros_like(mask)
-        crop_mask[:, :, 153:371, 44:1197] = 1
-        mask = mask * crop_mask
+        if self.opt.dataset[:5] == 'kitti':
+            crop_mask = torch.zeros_like(mask)
+            crop_mask[:, :, 153:371, 44:1197] = 1
+            mask = mask * crop_mask
 
         depth_gt = depth_gt[mask]
         depth_pred = depth_pred[mask]
-        depth_pred *= torch.median(depth_gt) / torch.median(depth_pred)
+        if self.opt.dataset != "own_supervised" and self.opt.dataset != "kitti_supervised":
+            depth_pred *= torch.median(depth_gt) / torch.median(depth_pred)
 
-        depth_pred = torch.clamp(depth_pred, min=1e-3, max=80)
+            depth_pred = torch.clamp(depth_pred, min=self.opt.min_depth, max=self.opt.max_depth)
 
         depth_errors = compute_depth_errors(depth_gt, depth_pred)
 
+        stop = False
         for i, metric in enumerate(self.depth_metric_names):
+            if torch.isnan(depth_errors[i]).any():
+                s = ''
+                for var in l:
+                    s += str(var)
+                s += " is NaN for item "+str(inputs['index'].squeeze().numpy())
+                raise Warning(s)
+                stop = True
             losses[metric] = np.array(depth_errors[i].cpu())
+        assert not stop
+
+
+
+    def compute_supervised_loss(self, inputs, outputs):
+        """Compute depth metrics, to allow monitoring during training
+
+        This isn't particularly accurate as it averages over the entire batch,
+        so is only used to give an indication of validation performance
+        """
+        pred_disp, depth_pred = disp_to_depth(outputs[("disp", 0)], self.opt.min_depth, self.opt.max_depth)
+        depth_pred = torch.clamp(F.interpolate(
+            depth_pred, inputs["depth_gt"].shape[2:], mode="bilinear", align_corners=False),
+            self.opt.min_depth, self.opt.max_depth)
+
+        depth_gt = inputs["depth_gt"]
+        mask = depth_gt > 0
+
+        # garg/eigen crop
+        if self.opt.dataset[:5] == 'kitti':
+            crop_mask = torch.zeros_like(mask)
+            crop_mask[:, :, 153:371, 44:1197] = 1
+            mask = mask * crop_mask
+
+        depth_gt = depth_gt
+        depth_pred = depth_pred
+        if self.opt.dataset != "own_supervised" and self.opt.dataset != "kitti_supervised":
+            depth_pred *= torch.median(depth_gt[mask]) / torch.median(depth_pred[mask])
+
+            depth_pred = torch.clamp(depth_pred, min=self.opt.min_depth, max=self.opt.max_depth)
+
+        log_diff = torch.log(depth_gt[mask]) - torch.log(depth_pred[mask])
+        l2_log_loss = torch.sqrt((log_diff*log_diff).mean())
+        losses = {}
+        losses['loss'] = l2_log_loss
+
+        stop = False
+        for l, v in losses.items():
+            if torch.isnan(v).any():
+                s = ''
+                for var in l:
+                    s += str(var)
+                s += " is NaN for item "+str(inputs['index'].squeeze().numpy())
+                raise Warning(s)
+                stop = True
+        assert not stop
+
+        return losses
 
     def log_time(self, batch_idx, duration, loss):
         """Print a logging statement to the terminal
@@ -544,13 +659,15 @@ class TrainClass:
         for l, v in losses.items():
             writer.add_scalar("{}".format(l), v, self.step)
 
+
         for j in range(min(4, self.opt.batch_size)):  # write a maxmimum of four images
             for s in self.opt.scales:
                 for frame_id in self.opt.frame_ids:
-                    writer.add_image(
-                        "color_{}_{}/{}".format(frame_id, s, j),
-                        inputs[("color", frame_id, s)][j].data, self.step)
-                    if s == 0 and frame_id != 0:
+                    if ("color", frame_id, s) in inputs.keys():
+                        writer.add_image(
+                            "color_{}_{}/{}".format(frame_id, s, j),
+                            inputs[("color", frame_id, s)][j].data, self.step)
+                    if s == 0 and frame_id != 0 and ("color", frame_id, s) in outputs.keys():
                         writer.add_image(
                             "color_pred_{}_{}/{}".format(frame_id, s, j),
                             outputs[("color", frame_id, s)][j].data, self.step)
@@ -561,15 +678,17 @@ class TrainClass:
 
                 if self.opt.predictive_mask:
                     for f_idx, frame_id in enumerate(self.opt.frame_ids[1:]):
-                        writer.add_image(
-                            "predictive_mask_{}_{}/{}".format(frame_id, s, j),
-                            outputs["predictive_mask"][("disp", s)][j, f_idx][None, ...],
-                            self.step)
+                        if "predictive_mask" in outputs.keys():
+                            writer.add_image(
+                                "predictive_mask_{}_{}/{}".format(frame_id, s, j),
+                                outputs["predictive_mask"][("disp", s)][j, f_idx][None, ...],
+                                self.step)
 
                 elif not self.opt.disable_automasking:
-                    writer.add_image(
-                        "automask_{}/{}".format(s, j),
-                        outputs["identity_selection/{}".format(s)][j][None, ...], self.step)
+                    if "identity_selection/{}".format(s) in outputs.keys():
+                        writer.add_image(
+                            "automask_{}/{}".format(s, j),
+                            outputs["identity_selection/{}".format(s)][j][None, ...], self.step)
 
     def save_opts(self):
         """Save options to disk so we know what we ran this experiment with

@@ -20,7 +20,7 @@ class MonodepthOptions:
         self.parser.add_argument("--data_path",
                                  type=str,
                                  help="path to the training data",
-                                 default=os.path.join(file_dir, "kitti_data"))
+                                 default=os.path.join(file_dir, "../../data/kitti_raw"))
         self.parser.add_argument("--log_dir",
                                  type=str,
                                  help="log directory",
@@ -44,8 +44,10 @@ class MonodepthOptions:
         self.parser.add_argument("--dataset",
                                  type=str,
                                  help="dataset to train on",
-                                 default="kitti",
-                                 choices=["kitti", "kitti_odom", "kitti_depth", "kitti_test"])
+                                 default="kitti_unsupervised",
+                                 choices=["kitti_supervised", "kitti_unsupervised",
+                                          "kitti_odom", "kitti_depth", "kitti_test",
+                                          "own_supervised", "own_unsupervised"])
         self.parser.add_argument("--png",
                                  help="if set, trains from raw KITTI png files (instead of jpgs)",
                                  action="store_true")
@@ -73,7 +75,7 @@ class MonodepthOptions:
         self.parser.add_argument("--max_depth",
                                  type=float,
                                  help="maximum depth",
-                                 default=100.0)
+                                 default=120.0)
         self.parser.add_argument("--use_stereo",
                                  help="if set, uses stereo pair for training",
                                  action="store_true")
@@ -87,7 +89,7 @@ class MonodepthOptions:
         self.parser.add_argument("--batch_size",
                                  type=int,
                                  help="batch size",
-                                 default=12)
+                                 default=3)
         self.parser.add_argument("--learning_rate",
                                  type=float,
                                  help="learning rate",
@@ -140,7 +142,7 @@ class MonodepthOptions:
         self.parser.add_argument("--num_workers",
                                  type=int,
                                  help="number of dataloader workers",
-                                 default=12)
+                                 default=0)
 
         # LOADING options
         self.parser.add_argument("--load_weights_folder",
@@ -156,7 +158,7 @@ class MonodepthOptions:
         self.parser.add_argument("--log_frequency",
                                  type=int,
                                  help="number of batches between each tensorboard log",
-                                 default=250)
+                                 default=10)
         self.parser.add_argument("--save_frequency",
                                  type=int,
                                  help="number of epochs between each save",
@@ -202,6 +204,17 @@ class MonodepthOptions:
                                  help="if set will perform the flipping post processing "
                                       "from the original monodepth paper",
                                  action="store_true")
+
+        # own dataset options
+        self.parser.add_argument("--train_to_val_ratio",
+                                 help="how many frames to assign for training as opposed to evaluation",
+                                 type=float,
+                                 default=0.7)
+        self.parser.add_argument("--assign_only_true_matches",
+                                 help="whether to only use true matches or include nearest neighbours "
+                                      "if no direct match between rgb and depth is found",
+                                 type=bool,
+                                 default=True)
 
     def parse(self):
         self.options = self.parser.parse_args()

@@ -59,8 +59,6 @@ def batch_post_process_disparity(l_disp, r_disp):
 def evaluate(opt):
     """Evaluates a pretrained model using a specified test set
     """
-    MIN_DEPTH = 1e-3
-    MAX_DEPTH = 80
 
     assert sum((opt.eval_mono, opt.eval_stereo)) == 1, \
         "Please choose mono or stereo evaluation by setting either --eval_mono or --eval_stereo"
@@ -74,21 +72,32 @@ def evaluate(opt):
 
         print("-> Loading weights from {}".format(opt.load_weights_folder))
 
-        filenames = readlines(os.path.join(splits_dir, opt.eval_split, "test_files.txt"))
         encoder_path = os.path.join(opt.load_weights_folder, "encoder.pth")
         decoder_path = os.path.join(opt.load_weights_folder, "depth.pth")
 
         encoder_dict = torch.load(encoder_path)
 
-        if opt.png:
-            image_ext = '.png'
-        else:
-            image_ext = '.jpg'
-        dataset = datasets.KITTIRAWDataset(os.path.dirname(os.path.abspath(__file__))+"/../../data/kitti_raw", filenames,
-                                           encoder_dict['height'], encoder_dict['width'],
-                                           [0], 4, is_train=False, img_ext=image_ext)
-        dataloader = DataLoader(dataset, 16, shuffle=False, num_workers=opt.num_workers,
-                                pin_memory=True, drop_last=False)
+        if opt.dataset[:5] == 'kitti':
+            filenames = readlines(os.path.join(splits_dir, opt.eval_split, "test_files.txt"))
+            if opt.png:
+                image_ext = '.png'
+            else:
+                image_ext = '.jpg'
+            dataset = datasets.KITTIRAWDataset(os.path.dirname(os.path.abspath(__file__))+"/../../data/kitti_raw",
+                                               filenames,
+                                               encoder_dict['height'], encoder_dict['width'],
+                                               [0], 4, is_train=False, img_ext=image_ext)
+            dataloader = DataLoader(dataset, opt.batch_size, shuffle=False, num_workers=opt.num_workers,
+                                    pin_memory=True, drop_last=False)
+        elif opt.dataset[:3] == 'own':
+            dataset = datasets.OwnSupervisedEvalDataset(opt.train_to_val_ratio,
+                                                        opt.assign_only_true_matches,
+                                                        opt.min_depth,
+                                                        [], [], opt.height, opt.width,
+                                                        opt.frame_ids, 4,
+                                                        is_train=False, img_ext='.png')
+            dataloader = DataLoader(dataset, opt.batch_size, shuffle=False, num_workers=opt.num_workers,
+                                    pin_memory=True, drop_last=False)
 
         encoder = networks.ResnetEncoder(opt.num_layers, False)
         depth_decoder = networks.DepthDecoder(encoder.num_ch_enc)
@@ -117,8 +126,19 @@ def evaluate(opt):
 
                 output = depth_decoder(encoder(input_color))
 
-                pred_disp, _ = disp_to_depth(output[("disp", 0)], opt.min_depth, opt.max_depth)
+                pred_disp, pred_depth = disp_to_depth(output[("disp", 0)], opt.min_depth, opt.max_depth)
                 pred_disp = pred_disp.cpu()[:, 0].numpy()
+
+                # q1_lidar = np.quantile(pred_depth[pred_depth > 0], 0.05)
+                # q2_lidar = np.quantile(pred_depth[pred_depth > 0], 0.95)
+                # import matplotlib.pyplot as plt
+                # cmap = plt.cm.get_cmap('nipy_spectral', 256)
+                # cmap = np.ndarray.astype(np.array([cmap[i] for i in range(256)])[:, :3] * 255, np.uint8)
+                # a = pred_depth.cpu().numpy()
+                # a = a[0, 0, :, :]
+                # depth_img = cmap[np.ndarray.astype(np.interp(a, (q1_lidar, q2_lidar), (0, 255)), np.int_), :]  # depths
+                # import PIL.Image as Image
+                # Image._show(Image.fromarray(depth_img))
 
                 if opt.post_process:
                     N = pred_disp.shape[0] // 2
@@ -192,7 +212,7 @@ def evaluate(opt):
         pred_depth = 1 / pred_disp
 
         if opt.eval_split == "eigen":
-            mask = np.logical_and(gt_depth > MIN_DEPTH, gt_depth < MAX_DEPTH)
+            mask = np.logical_and(gt_depth > opt.min_depth, gt_depth < opt.max_depth)
 
             crop = np.array([0.40810811 * gt_height, 0.99189189 * gt_height,
                              0.03594771 * gt_width,  0.96405229 * gt_width]).astype(np.int32)
@@ -212,8 +232,8 @@ def evaluate(opt):
             ratios.append(ratio)
             pred_depth *= ratio
 
-        pred_depth[pred_depth < MIN_DEPTH] = MIN_DEPTH
-        pred_depth[pred_depth > MAX_DEPTH] = MAX_DEPTH
+        pred_depth[pred_depth < opt.min_depth] = opt.min_depth
+        pred_depth[pred_depth > opt.max_depth] = opt.max_depth
 
         errors.append(compute_errors(gt_depth, pred_depth))
 
