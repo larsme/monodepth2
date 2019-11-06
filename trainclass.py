@@ -24,6 +24,7 @@ from layers import *
 import datasets
 import networks
 from IPython import embed
+import math
 
 
 class TrainClass:
@@ -481,6 +482,12 @@ class TrainClass:
                         self.compute_reprojection_loss(pred, target))
 
                 identity_reprojection_losses = torch.cat(identity_reprojection_losses, 1)
+
+                if self.opt.dataset[:3] == 'own':
+                    minY = int(math.ceil(60 / 1536 * self.opt.height / 2**scale))
+                    maxY = int(math.floor(1460 / 1536 * self.opt.height / 2**scale))
+                    identity_reprojection_losses[:, :, :minY, :] = 0
+                    identity_reprojection_losses[:, :, maxY:, :] = 0
 
                 if self.opt.avg_reprojection:
                     identity_reprojection_loss = identity_reprojection_losses.mean(1, keepdim=True)

@@ -12,6 +12,7 @@ from utils import readlines
 from options import MonodepthOptions
 import datasets
 import networks
+import time
 
 cv2.setNumThreads(0)  # This speeds up evaluation 5x on our unix systems (OpenCV 3.3.1)
 
@@ -32,6 +33,8 @@ def compute_errors(gt, pred):
     a2 = (thresh < 1.25 ** 2).mean()
     a3 = (thresh < 1.25 ** 3).mean()
 
+    mae = np.abs(gt-pred).mean()
+
     rmse = (gt - pred) ** 2
     rmse = np.sqrt(rmse.mean())
 
@@ -42,7 +45,7 @@ def compute_errors(gt, pred):
 
     sq_rel = np.mean(((gt - pred) ** 2) / gt)
 
-    return abs_rel, sq_rel, rmse, rmse_log, a1, a2, a3
+    return abs_rel, sq_rel, mae, rmse, rmse_log, a1, a2, a3
 
 
 def batch_post_process_disparity(l_disp, r_disp):
@@ -111,10 +114,21 @@ def evaluate(opt):
         depth_decoder.cuda()
         depth_decoder.eval()
 
+        errors = []
+        ratios = []
+
         pred_disps = []
 
         print("-> Computing predictions with size {}x{}".format(
             encoder_dict['width'], encoder_dict['height']))
+
+        parameter_count = 0
+        for parameter in depth_decoder.parameters():
+            if parameter.requires_grad:
+                parameter_count += parameter.numel()
+        for parameter in encoder.parameters():
+            if parameter.requires_grad:
+                parameter_count += parameter.numel()
 
         with torch.no_grad():
             for data in dataloader:
@@ -124,28 +138,71 @@ def evaluate(opt):
                     # Post-processed results require each image to have two forward passes
                     input_color = torch.cat((input_color, torch.flip(input_color, [3])), 0)
 
+                t = time.time()
                 output = depth_decoder(encoder(input_color))
+                elapsed = time.time() - t
 
-                pred_disp, pred_depth = disp_to_depth(output[("disp", 0)], opt.min_depth, opt.max_depth)
+                pred_disp, pred_depths = disp_to_depth(output[("disp", 0)], opt.min_depth, opt.max_depth)
                 pred_disp = pred_disp.cpu()[:, 0].numpy()
 
-                # q1_lidar = np.quantile(pred_depth[pred_depth > 0], 0.05)
-                # q2_lidar = np.quantile(pred_depth[pred_depth > 0], 0.95)
+                # d = pred_depths[0,:,:].squeeze()
+                # q1_lidar = np.quantile(d[d > 0], 0.05)
+                # q2_lidar = np.quantile(d[d > 0], 0.95)
                 # import matplotlib.pyplot as plt
                 # cmap = plt.cm.get_cmap('nipy_spectral', 256)
-                # cmap = np.ndarray.astype(np.array([cmap[i] for i in range(256)])[:, :3] * 255, np.uint8)
-                # a = pred_depth.cpu().numpy()
-                # a = a[0, 0, :, :]
-                # depth_img = cmap[np.ndarray.astype(np.interp(a, (q1_lidar, q2_lidar), (0, 255)), np.int_), :]  # depths
+                # cmap2 = np.ndarray.astype(np.array([cmap(i) for i in range(256)])[:, :3] * 255, np.uint8)
+                # depth_img = cmap2[np.ndarray.astype(np.interp(d.cpu().numpy(), (q1_lidar, q2_lidar), (0, 255)), np.int_), :]  # depths
                 # import PIL.Image as Image
                 # Image._show(Image.fromarray(depth_img))
+                #
+                # Image._show(Image.fromarray((input_color[0,:,:,:].squeeze().cpu().numpy().transpose(1,2,0)*255).astype(np.uint8)))
 
                 if opt.post_process:
                     N = pred_disp.shape[0] // 2
                     pred_disp = batch_post_process_disparity(pred_disp[:N], pred_disp[N:, :, ::-1])
 
-                pred_disps.append(pred_disp)
+                if opt.dataset[:3] == 'own':
+                    gt_depths = data["depth_gt"].squeeze().cpu().numpy()
+                    pred_depths = pred_depths.squeeze().cpu().numpy()
+                    for i in range(pred_disp.shape[0]):
+                        if pred_disp.shape[0]>1:
+                            pred_depth = pred_depths[i, :, :]
+                            gt_depth = gt_depths[i, :, :]
+                        else:
+                            pred_depth = pred_depths
+                            gt_depth = gt_depths
+                        pred_depth = pred_depth[gt_depth > 0]
+                        gt_depth = gt_depth[gt_depth > 0]
+                        if opt.dataset == 'own_unsupervised' and not opt.disable_median_scaling:
+                            ratio = np.median(gt_depth) / np.median(pred_depth)
+                            ratios.append(ratio)
+                            pred_depth *= ratio
+                        errors.append(compute_errors(gt_depth, pred_depth)
+                                      + (parameter_count, elapsed, elapsed/pred_disp.shape[0]))
+                else:
+                    pred_disps.append(pred_disp)
 
+        if opt.dataset[:3] == 'own':
+            fname = opt.load_weights_folder + '/../../errors.txt'
+
+            with open(fname, 'w') as text_file:
+                if opt.dataset == 'own_unsupervised' and not opt.disable_median_scaling:
+                    ratios = np.array(ratios)
+                    s = " Scaling ratios | mean: {:0.3f} | std: {:0.3f}".format(np.mean(ratios), np.std(ratios))
+                    text_file.write(s+'\n')
+                    print(s)
+
+                mean_errors = np.array(errors).mean(0)
+                s = "\n  " + ("{:>16} | " * 11).format("abs_rel", "sq_rel", "mae", "rmse", "rmse_log", "a1", "a2", "a3",
+                                                     "parameters", "batch duration", "duration")
+                text_file.write(s+'\n')
+                print(s)
+                s = ("&{: 16.6f}  " * 11).format(*mean_errors.tolist()) + "\\\\"
+                text_file.write(s+'\n')
+                print(s)
+
+                print("\n-> Done!")
+                quit()
         pred_disps = np.concatenate(pred_disps)
 
     else:
@@ -199,9 +256,6 @@ def evaluate(opt):
     else:
         print("   Mono evaluation - using median scaling")
 
-    errors = []
-    ratios = []
-
     for i in range(pred_disps.shape[0]):
 
         gt_depth = gt_depths[i]
@@ -244,8 +298,9 @@ def evaluate(opt):
 
     mean_errors = np.array(errors).mean(0)
 
-    print("\n  " + ("{:>8} | " * 7).format("abs_rel", "sq_rel", "rmse", "rmse_log", "a1", "a2", "a3"))
-    print(("&{: 8.3f}  " * 7).format(*mean_errors.tolist()) + "\\\\")
+    print("\n  " + ("{:>10} | " * 11).format("abs_rel", "sq_rel", "mae", "rmse", "rmse_log", "a1", "a2", "a3",
+                                           "parameters", "batch duration", "duration"))
+    print(("&{: 10.3f}  " * 11).format(*mean_errors.tolist()) + "\\\\")
     print("\n-> Done!")
 
 
