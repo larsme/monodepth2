@@ -93,6 +93,7 @@ def evaluate(opt):
             dataloader = DataLoader(dataset, opt.batch_size, shuffle=False, num_workers=opt.num_workers,
                                     pin_memory=True, drop_last=False)
         elif opt.dataset[:3] == 'own':
+            # dataset = datasets.OwnSupervisedDispDataset(opt.train_to_val_ratio,
             dataset = datasets.OwnSupervisedEvalDataset(opt.train_to_val_ratio,
                                                         opt.assign_only_true_matches,
                                                         opt.min_depth,
@@ -146,16 +147,21 @@ def evaluate(opt):
                 pred_disp = pred_disp.cpu()[:, 0].numpy()
 
                 # d = pred_depths[0,:,:].squeeze()
-                # q1_lidar = np.quantile(d[d > 0], 0.05)
-                # q2_lidar = np.quantile(d[d > 0], 0.95)
+                # q1_lidar = np.quantile(d, 0.05)
+                # q2_lidar = np.quantile(d, 0.95)
                 # import matplotlib.pyplot as plt
                 # cmap = plt.cm.get_cmap('nipy_spectral', 256)
                 # cmap2 = np.ndarray.astype(np.array([cmap(i) for i in range(256)])[:, :3] * 255, np.uint8)
                 # depth_img = cmap2[np.ndarray.astype(np.interp(d.cpu().numpy(), (q1_lidar, q2_lidar), (0, 255)), np.int_), :]  # depths
                 # import PIL.Image as Image
-                # Image._show(Image.fromarray(depth_img))
+                # depth_img = Image.fromarray(depth_img)
+                # depth_img.save('pred depth.png')
+                # depth_img.show()
                 #
-                # Image._show(Image.fromarray((input_color[0,:,:,:].squeeze().cpu().numpy().transpose(1,2,0)*255).astype(np.uint8)))
+                # img_rgb = Image.fromarray((input_color[0,:,:,:].squeeze().cpu().numpy().transpose(1,2,0)*255)
+                #                           .astype(np.uint8))
+                # img_rgb.show()
+                # img_rgb.save('rgb.png')
 
                 if opt.post_process:
                     N = pred_disp.shape[0] // 2

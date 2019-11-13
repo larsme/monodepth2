@@ -41,6 +41,7 @@ class OwnDataset(MonoDataset):
 
     def get_color_from_file(self, idx, do_flip):
         color = pil.fromarray(cv2.imread(self.rgb_filenames[idx]))
+        # color = self.loader(self.rgb_filenames[idx])
         if do_flip:
             color = color.transpose(pil.FLIP_LEFT_RIGHT)
 
@@ -303,3 +304,57 @@ class OwnSupervisedEvalDataset(OwnDataset):
                     break
 
         return rgb_eval_paths, depth_eval_paths
+
+class OwnSupervisedDispDataset(OwnSupervisedEvalDataset):
+    """KITTI dataset which loads the original velodyne depth maps for ground truth
+    """
+
+    def __init__(self, *args, **kwargs):
+        super(OwnSupervisedDispDataset, self).__init__(*args, **kwargs)
+
+    def get_filenames(self, train_to_val_ratio, assign_only_true_matches):
+
+        disp_num = 36083 + self.rgb_delay
+
+        rgb_paths = list(sorted(glob.iglob(self.rgb_dir + "/*.png")))
+        depth_paths = list(sorted(glob.iglob(self.depth_dir + "/*.bin")))
+        num_depth = int(depth_paths[0].split(self.depth_dir + '/')[1].split('.bin')[0])
+        num_rgb = int(rgb_paths[0].split(self.rgb_dir + '/')[1].split('.png')[0]) + self.rgb_delay
+        i_rgb = 0
+        i_depth = 0
+
+        rgb_disp_paths = []
+        depth_disp_paths = []
+        while True:
+            if num_depth < num_rgb:
+                i_depth += 1
+                if i_depth < depth_paths.__len__():
+                    num_prev_depth = num_depth
+                    num_depth = int(depth_paths[i_depth].split(self.depth_dir + '/')[1].split('.bin')[0])
+                    if num_depth > num_rgb and not assign_only_true_matches and num_rgb == disp_num:
+                        rgb_disp_paths.append(rgb_paths[i_rgb])
+                        if abs(num_depth - num_rgb) <= abs(num_prev_depth - num_rgb):
+                            depth_disp_paths.append(depth_paths[i_depth])
+                        else:
+                            depth_disp_paths.append(depth_paths[i_depth - 1])
+                else:
+                    break
+            elif num_rgb < num_depth:
+                i_rgb += 1
+                if i_rgb < rgb_paths.__len__():
+                    num_rgb = int(rgb_paths[i_rgb].split(self.rgb_dir + '/')[1].split('.png')[0]) + self.rgb_delay
+                else:
+                    break
+            else:
+                if num_rgb == disp_num:
+                    rgb_disp_paths.append(rgb_paths[i_rgb])
+                    depth_disp_paths.append(depth_paths[i_depth])
+                i_rgb += 1
+                i_depth += 1
+                if i_rgb < rgb_paths.__len__() and i_depth < depth_paths.__len__():
+                    num_rgb = int(rgb_paths[i_rgb].split(self.rgb_dir + '/')[1].split('.png')[0]) + self.rgb_delay
+                    num_depth = int(depth_paths[i_rgb].split(self.depth_dir + '/')[1].split('.bin')[0])
+                else:
+                    break
+
+        return rgb_disp_paths, depth_disp_paths
