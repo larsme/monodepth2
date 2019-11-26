@@ -133,6 +133,8 @@ def evaluate(opt):
 
         with torch.no_grad():
             for data in dataloader:
+                print('items '+str(data["index"].squeeze())+' of ' +str(dataloader.batch_size*dataloader.__len__()))
+
                 input_color = data[("color", 0, 0)].cuda()
 
                 if opt.post_process:
@@ -189,7 +191,8 @@ def evaluate(opt):
                     pred_disps.append(pred_disp)
 
         if opt.dataset[:3] == 'own':
-            fname = opt.load_weights_folder + '/../../errors.txt'
+
+            fname = opt.load_weights_folder + '/../../errors' + opt.load_weights_folder.split('weights')[1] + '.txt'
 
             with open(fname, 'w') as text_file:
                 if opt.dataset == 'own_unsupervised' and not opt.disable_median_scaling:
