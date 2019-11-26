@@ -1,4 +1,10 @@
 
+#python train.py --model_name M_620x416  --height 416 --width 640 --png
+#python train.py --model_name unsupervised_M_640x416 --height 416 --width 640 --png --dataset own_unsupervised --log_dir Log_own_dataset
+#python train.py --model_name unsupervised_M_640x416 --height 128 --width 128 --png --dataset own_unsupervised --log_dir Log_own_dataset
+#python train.py --model_name supervised_M_640x416_1 --height 416 --width 640 --png --dataset own_supervised --log_dir Log_own_dataset --load_weights_folder Log_own_dataset/supervised_M_640x416_1/models/weights_19 --eval_mono
+#python train.py --model_name unsupervised_M_640x416 --height 416 --width 640 --png --dataset own_unsupervised --log_dir Log_own_dataset --load_weights_folder Log_own_dataset/unsupervised_M_640x416_pil_load/models/weights_19 --eval_mono
+#python train.py --model_name supervised_M_640x416 --height 416 --width 640 --png --dataset own_supervised --log_dir Log_own_dataset
 
 #python train.py --model_name supervised_M_640x416_1 --height 416 --width 640 --png --dataset own_supervised --log_dir Log_own_dataset --num_epochs 20
 #python evaluate_depth.py --model_name supervised_M_640x416_1 --height 416 --width 640 --png --dataset own_supervised --log_dir Log_own_dataset --load_weights_folder Log_own_dataset/supervised_M_640x416_1/models/weights_19 --eval_mono
@@ -12,21 +18,21 @@
 #python train.py --model_name unsupervised_M_640x416_2 --height 416 --width 640 --png --dataset own_unsupervised --log_dir Log_own_dataset --num_epochs 20
 #python train.py --model_name unsupervised_M_640x416_3 --height 416 --width 640 --png --dataset own_unsupervised --log_dir Log_own_dataset --num_epochs 20
 #python train.py --model_name unsupervised_M_640x416_4 --height 416 --width 640 --png --dataset own_unsupervised --log_dir Log_own_dataset --num_epochs 20
-
-python evaluate_depth.py --model_name supervised_M_640x416_1 --height 416 --width 640 --png --dataset own_supervised --log_dir Log_own_dataset --load_weights_folder Log_own_dataset/supervised_M_640x416_1/models/weights_2 --eval_mono
-python evaluate_depth.py --model_name supervised_M_640x416_1 --height 416 --width 640 --png --dataset own_supervised --log_dir Log_own_dataset --load_weights_folder Log_own_dataset/supervised_M_640x416_1/models/weights_5 --eval_mono
-python evaluate_depth.py --model_name supervised_M_640x416_1 --height 416 --width 640 --png --dataset own_supervised --log_dir Log_own_dataset --load_weights_folder Log_own_dataset/supervised_M_640x416_1/models/weights_10 --eval_mono
-python evaluate_depth.py --model_name supervised_M_640x416_2 --height 416 --width 640 --png --dataset own_supervised --log_dir Log_own_dataset --load_weights_folder Log_own_dataset/supervised_M_640x416_2/models/weights_2 --eval_mono
-python evaluate_depth.py --model_name supervised_M_640x416_3 --height 416 --width 640 --png --dataset own_supervised --log_dir Log_own_dataset --load_weights_folder Log_own_dataset/supervised_M_640x416_3/models/weights_2 --eval_mono
-python evaluate_depth.py --model_name supervised_M_640x416_4 --height 416 --width 640 --png --dataset own_supervised --log_dir Log_own_dataset --load_weights_folder Log_own_dataset/supervised_M_640x416_4/models/weights_2 --eval_mono
-
-python evaluate_depth.py --model_name supervised_M_640x416_2 --height 416 --width 640 --png --dataset own_supervised --log_dir Log_own_dataset --load_weights_folder Log_own_dataset/supervised_M_640x416_2/models/weights_5 --eval_mono
-python evaluate_depth.py --model_name supervised_M_640x416_3 --height 416 --width 640 --png --dataset own_supervised --log_dir Log_own_dataset --load_weights_folder Log_own_dataset/supervised_M_640x416_3/models/weights_5 --eval_mono
-python evaluate_depth.py --model_name supervised_M_640x416_4 --height 416 --width 640 --png --dataset own_supervised --log_dir Log_own_dataset --load_weights_folder Log_own_dataset/supervised_M_640x416_4/models/weights_5 --eval_mono
-
-python evaluate_depth.py --model_name supervised_M_640x416_2 --height 416 --width 640 --png --dataset own_supervised --log_dir Log_own_dataset --load_weights_folder Log_own_dataset/supervised_M_640x416_2/models/weights_10 --eval_mono
-python evaluate_depth.py --model_name supervised_M_640x416_3 --height 416 --width 640 --png --dataset own_supervised --log_dir Log_own_dataset --load_weights_folder Log_own_dataset/supervised_M_640x416_3/models/weights_10 --eval_mono
-python evaluate_depth.py --model_name supervised_M_640x416_4 --height 416 --width 640 --png --dataset own_supervised --log_dir Log_own_dataset --load_weights_folder Log_own_dataset/supervised_M_640x416_4/models/weights_10 --eval_mono
+#
+#python evaluate_depth.py --model_name supervised_M_640x416_1 --height 416 --width 640 --png --dataset own_supervised --log_dir Log_own_dataset --load_weights_folder Log_own_dataset/supervised_M_640x416_1/models/weights_2 --eval_mono
+#python evaluate_depth.py --model_name supervised_M_640x416_1 --height 416 --width 640 --png --dataset own_supervised --log_dir Log_own_dataset --load_weights_folder Log_own_dataset/supervised_M_640x416_1/models/weights_5 --eval_mono
+#python evaluate_depth.py --model_name supervised_M_640x416_1 --height 416 --width 640 --png --dataset own_supervised --log_dir Log_own_dataset --load_weights_folder Log_own_dataset/supervised_M_640x416_1/models/weights_10 --eval_mono
+#python evaluate_depth.py --model_name supervised_M_640x416_2 --height 416 --width 640 --png --dataset own_supervised --log_dir Log_own_dataset --load_weights_folder Log_own_dataset/supervised_M_640x416_2/models/weights_2 --eval_mono
+#python evaluate_depth.py --model_name supervised_M_640x416_3 --height 416 --width 640 --png --dataset own_supervised --log_dir Log_own_dataset --load_weights_folder Log_own_dataset/supervised_M_640x416_3/models/weights_2 --eval_mono
+#python evaluate_depth.py --model_name supervised_M_640x416_4 --height 416 --width 640 --png --dataset own_supervised --log_dir Log_own_dataset --load_weights_folder Log_own_dataset/supervised_M_640x416_4/models/weights_2 --eval_mono
+#
+#python evaluate_depth.py --model_name supervised_M_640x416_2 --height 416 --width 640 --png --dataset own_supervised --log_dir Log_own_dataset --load_weights_folder Log_own_dataset/supervised_M_640x416_2/models/weights_5 --eval_mono
+#python evaluate_depth.py --model_name supervised_M_640x416_3 --height 416 --width 640 --png --dataset own_supervised --log_dir Log_own_dataset --load_weights_folder Log_own_dataset/supervised_M_640x416_3/models/weights_5 --eval_mono
+#python evaluate_depth.py --model_name supervised_M_640x416_4 --height 416 --width 640 --png --dataset own_supervised --log_dir Log_own_dataset --load_weights_folder Log_own_dataset/supervised_M_640x416_4/models/weights_5 --eval_mono
+#
+#python evaluate_depth.py --model_name supervised_M_640x416_2 --height 416 --width 640 --png --dataset own_supervised --log_dir Log_own_dataset --load_weights_folder Log_own_dataset/supervised_M_640x416_2/models/weights_10 --eval_mono
+#python evaluate_depth.py --model_name supervised_M_640x416_3 --height 416 --width 640 --png --dataset own_supervised --log_dir Log_own_dataset --load_weights_folder Log_own_dataset/supervised_M_640x416_3/models/weights_10 --eval_mono
+#python evaluate_depth.py --model_name supervised_M_640x416_4 --height 416 --width 640 --png --dataset own_supervised --log_dir Log_own_dataset --load_weights_folder Log_own_dataset/supervised_M_640x416_4/models/weights_10 --eval_mono
 
 #python evaluate_depth.py --model_name supervised_M_640x416_1 --height 416 --width 640 --png --dataset own_supervised --log_dir Log_own_dataset --load_weights_folder Log_own_dataset/supervised_M_640x416_1/models/weights_19 --eval_mono
 #python evaluate_depth.py --model_name supervised_M_640x416_2 --height 416 --width 640 --png --dataset own_supervised --log_dir Log_own_dataset --load_weights_folder Log_own_dataset/supervised_M_640x416_2/models/weights_19 --eval_mono
